@@ -1,0 +1,50 @@
+name: co_tuong_ai
+description: "A new Flutter project."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  
+  # Hỗ trợ đa ngôn ngữ
+  flutter_localizations:
+    sdk: flutter
+
+  # --- PLUGIN CHO IOS ---
+  pikafish_engine: ^1.0.5
+  # --------------------
+
+  cupertino_icons: ^1.0.8
+  flutter_svg: ^2.0.9
+  path_provider: ^2.1.1
+  window_manager: ^0.3.9
+  audioplayers: ^6.0.0  
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  # Thư viện tạo icon tự động
+  flutter_launcher_icons: ^0.13.1
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/pieces/
+    - assets/engine/pikafish.exe
+    - assets/engine/pikafish.nnue
+    - assets/sounds/
+    # Khai báo file icon để Flutter nhận diện (tùy chọn, nhưng nên có)
+    - assets/icon.png
+
+# Cấu hình tạo icon (nằm ngoài cùng, không thụt lề)
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "assets/icon.png"
+  min_sdk_android: 21 # Hỗ trợ Android 5.0 trở lên
