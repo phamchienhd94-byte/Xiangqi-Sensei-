@@ -15,7 +15,7 @@ dependencies:
     sdk: flutter
 
   # --- PLUGIN CHO IOS ---
-  pikafish_engine: ^1.0.5
+  pikafish_engine: any
   # --------------------
 
   cupertino_icons: ^1.0.8
