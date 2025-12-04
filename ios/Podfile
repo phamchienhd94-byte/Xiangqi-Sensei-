@@ -1,6 +1,6 @@
 # Uncomment this line to define a global platform for your project
-# Đã chỉnh thành 11.0 để tương thích với Pikafish Engine
-platform :ios, '11.0'
+# Đã chỉnh thành 12.0 để tương thích với Pikafish Engine
+platform :ios, '12.0'
 
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
@@ -43,7 +43,7 @@ post_install do |installer|
 
     # Đoạn này fix lỗi permission nếu có
     target.build_configurations.each do |config|
-      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '11.0'
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '12.0'
     end
   end
 end
