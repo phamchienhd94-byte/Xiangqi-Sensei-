@@ -41,6 +41,18 @@ android {
         versionName = flutter.versionName
     }
 
+    // *** BỔ SUNG: CẤU HÌNH ĐÓNG GÓI CHO FILE NATIVE (.so) ***
+    // Điều này buộc Android giải nén file .so ra khỏi APK/AAB để có thể chạy được (executable).
+    packaging {
+        jniLibs {
+            // Đảm bảo các thư viện native được giải nén ra thư mục con /lib của app
+            // Đây là giải pháp hiệu quả nhất để chạy file binary (.so) từ Flutter
+            useLegacyPackaging = true
+        }
+    }
+    // *******************************************************
+
+
     // --- 2. THÊM CẤU HÌNH KÝ (SIGNING CONFIGS) ---
     signingConfigs {
         create("release") {

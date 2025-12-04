@@ -5,29 +5,20 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart'; // Import MethodChannel
 import 'package:path_provider/path_provider.dart';
 
-// Import Plugin cho iOS
-import 'package:pikafish_engine/pikafish_engine.dart';
-
 class EngineService {
   static final EngineService _instance = EngineService._internal();
   factory EngineService() => _instance;
   EngineService._internal();
 
-  // --- Biến cho Android/Windows (Giữ nguyên) ---
   Process? _process;
   StreamSubscription? _stdoutSubscription;
   StreamSubscription? _stderrSubscription;
-
-  // --- Biến cho iOS (Mới) ---
-  Pikafish? _iosEngine;
 
   final StreamController<String> _engineOutputController =
       StreamController.broadcast();
   Stream<String> get engineOutput => _engineOutputController.stream;
 
-  // Kiểm tra chạy: Nếu là iOS thì check _iosEngine, còn lại check _process
-  bool get isRunning => Platform.isIOS ? (_iosEngine != null) : (_process != null);
-  
+  bool get isRunning => _process != null;
   bool _isReady = false;
   String _absoluteNnuePath = "";
 
@@ -35,34 +26,11 @@ class EngineService {
   static const platform = MethodChannel('com.example.co_tuong_ai/engine_channel');
 
   Future<void> startup() async {
-    // Tắt engine cũ nếu đang chạy
-    await shutdown();
-
-    // --- NHÁNH 1: IOS (DÙNG PLUGIN) ---
-    if (Platform.isIOS) {
-      debugPrint("🍏 STARTUP ENGINE (IOS PLUGIN MODE)...");
-      try {
-        _iosEngine = Pikafish();
-        
-        // Đợi một chút cho engine khởi tạo native
-        await Future.delayed(const Duration(milliseconds: 500));
-
-        // Lắng nghe output từ plugin và bắn về stream chung
-        _iosEngine!.stdout.listen((line) {
-          _handleEngineResponse(line); // Vẫn dùng hàm xử lý logic chung
-          _engineOutputController.add(line);
-        });
-
-        // Gửi lệnh khởi động UCI
-        sendCommand("uci");
-      } catch (e) {
-        debugPrint("❌ Lỗi khởi động iOS Engine: $e");
-      }
-      return; // Kết thúc hàm, không chạy đoạn dưới
+    if (_process != null) {
+      await shutdown();
     }
 
-    // --- NHÁNH 2: ANDROID / WINDOWS (GIỮ NGUYÊN LOGIC CŨ 100%) ---
-    debugPrint("🚀 STARTUP ENGINE (NATIVE PROCESS MODE)...");
+    debugPrint("🚀 STARTUP ENGINE (METHOD CHANNEL V2)...");
 
     try {
       String executablePath = "";
@@ -83,6 +51,7 @@ class EngineService {
           
           if (!File(executablePath).existsSync()) {
             debugPrint("❌ Vẫn không thấy file tại: $executablePath");
+            // Kiểm tra lại xem bạn đã bỏ file vào jniLibs/arm64-v8a chưa?
           }
         } catch (e) {
           debugPrint("❌ Lỗi gọi MethodChannel: $e");
@@ -98,8 +67,6 @@ class EngineService {
       }
 
       // --- NNUE (Copy từ assets) ---
-      // Lưu ý: iOS không dùng file NNUE rời theo cách này (plugin tự lo), 
-      // nên đoạn này chỉ chạy cho Android/Windows
       _absoluteNnuePath = "$workingDir/pikafish.nnue";
       await _copyAssetToFile("assets/engine/pikafish.nnue", _absoluteNnuePath);
 
@@ -145,21 +112,11 @@ class EngineService {
   void _handleEngineResponse(String line) {
     if (line == "uciok") {
       debugPrint("✓ uciok -> Config...");
-      
-      // iOS Plugin thường đã tích hợp sẵn NNUE bên trong, 
-      // nhưng nếu cần load file rời thì logic plugin sẽ khác.
-      // Tạm thời với iOS ta bỏ qua lệnh load EvalFile nếu plugin tự xử lý.
-      if (!Platform.isIOS) {
-        sendCommand("setoption name EvalFile value $_absoluteNnuePath");
-      }
-
-      // Cấu hình Threads/Hash
-      if (Platform.isAndroid || Platform.isIOS) {
-         // Mobile (Android/iOS)
+      sendCommand("setoption name EvalFile value $_absoluteNnuePath");
+      if (Platform.isAndroid) {
          sendCommand("setoption name Threads value 4"); 
          sendCommand("setoption name Hash value 32");   
       } else {
-         // PC (Windows)
          sendCommand("setoption name Threads value 4"); 
          sendCommand("setoption name Hash value 128");  
       }
@@ -179,19 +136,11 @@ class EngineService {
       final file = File(filePath);
       await file.writeAsBytes(bytes, flush: true);
     } catch (e) {
-      // Bỏ qua lỗi asset không tồn tại
+      // Bỏ qua lỗi asset không tồn tại (ví dụ exe trên android)
     }
   }
 
   void sendCommand(String command) {
-    // 1. Gửi cho iOS Plugin
-    if (Platform.isIOS && _iosEngine != null) {
-      // Plugin này dùng setter stdin để gửi lệnh
-      _iosEngine!.stdin = command;
-      return;
-    }
-
-    // 2. Gửi cho Process (Android/Windows)
     if (_process != null) {
       try {
         _process!.stdin.writeln(command);
@@ -200,17 +149,6 @@ class EngineService {
   }
 
   Future<void> shutdown() async {
-    // Tắt iOS Engine
-    if (_iosEngine != null) {
-      // Gửi lệnh quit UCI
-      try { _iosEngine!.stdin = 'quit'; } catch(_) {}
-      
-      // Gọi dispose của plugin (như tài liệu hướng dẫn)
-      _iosEngine!.dispose();
-      _iosEngine = null;
-    }
-
-    // Tắt Android/Windows Process
     if (_process != null) {
       sendCommand("quit");
       await _stdoutSubscription?.cancel();

@@ -1,7 +1,7 @@
 name: co_tuong_ai
 description: "A new Flutter project."
 publish_to: 'none'
-version: 1.0.0+1
+version: 1.0.0+3
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -13,10 +13,6 @@ dependencies:
   # Hỗ trợ đa ngôn ngữ
   flutter_localizations:
     sdk: flutter
-
-  # --- PLUGIN CHO IOS ---
-  pikafish_engine: any
-  # --------------------
 
   cupertino_icons: ^1.0.8
   flutter_svg: ^2.0.9
