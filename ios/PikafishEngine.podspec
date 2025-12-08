@@ -14,27 +14,23 @@ This podspec tells Xcode to compile the Pikafish C++ source code directly direct
   s.license          = { :type => 'GPLv3', :file => 'LICENSE' }
   s.author           = { 'Your Name' => 'email@example.com' }
   
-  # Đảm bảo đường dẫn này trỏ đúng đến nơi bạn chứa mã nguồn C++
-  # Dấu **/* nghĩa là lấy tất cả file trong thư mục con
   s.source           = { :path => '.' }
   s.source_files     = 'pikafish_src/**/*.{h,cpp,c,hpp}'
 
-  # Cấu hình biên dịch quan trọng cho iOS
+  # --- QUAN TRỌNG: BIẾN THÀNH THƯ VIỆN TĨNH ---
+  # Dòng này giúp trộn engine vào App, tránh lỗi Crash khi khởi động
+  s.static_framework = true
+
   s.library          = 'c++'
   s.xcconfig = {
-    'CLANG_CXX_LANGUAGE_STANDARD' => 'c++17', # Pikafish cần C++17 trở lên
+    'CLANG_CXX_LANGUAGE_STANDARD' => 'c++17',
     'CLANG_CXX_LIBRARY' => 'libc++',
-    # Tắt bitcode nếu cần thiết (các bản Xcode mới mặc định tắt)
     'ENABLE_BITCODE' => 'NO',
-    # Các cờ tối ưu hóa để Engine chạy nhanh
     'OTHER_CPLUSPLUSFLAGS' => '-O3 -DNDEBUG -std=c++17',
     
-    # --- QUAN TRỌNG: KHẮC PHỤC LỖI CRASH TRÊN IPHONE (RELEASE MODE) ---
-    # Ép buộc Xcode giữ lại 3 hàm quan trọng và không được xóa chúng khi tối ưu
-    # Lưu ý: Phải có dấu gạch dưới _ trước tên hàm (Quy tắc của iOS)
+    # Giữ nguyên cờ xuất khẩu hàm để Dart tìm thấy
     'OTHER_LDFLAGS' => '-Wl,-exported_symbol,_init_pikafish_ios -Wl,-exported_symbol,_send_command_ios -Wl,-exported_symbol,_read_stdout_ios'
   }
   
-  # Yêu cầu phiên bản iOS tối thiểu
   s.ios.deployment_target = '12.0'
 end
