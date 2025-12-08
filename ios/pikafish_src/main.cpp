@@ -28,7 +28,12 @@
 
 using namespace Stockfish;
 
-int main(int argc, char* argv[]) {
+// --- SỬA ĐỔI CHO IOS ---
+// 1. Đổi tên main -> pikafish_main
+// 2. Thêm extern "C" để tránh đổi tên hàm (name mangling) trong C++
+// 3. Thêm visibility("default") để hàm này hiển thị ra ngoài cho Dart gọi
+extern "C" __attribute__((visibility("default"))) __attribute__((used))
+int pikafish_main(int argc, char* argv[]) {
     std::cout << engine_info() << std::endl;
 
     Bitboards::init();
