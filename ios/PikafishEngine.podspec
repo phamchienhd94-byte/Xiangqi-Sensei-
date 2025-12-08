@@ -1,6 +1,6 @@
 #
 # Đây là file cấu hình giúp Codemagic tự động biên dịch mã nguồn C++
-# Hãy lưu file này tại: ios/pikafish_engine.podspec
+# Hãy lưu file này tại: ios/PikafishEngine.podspec
 #
 
 Pod::Spec.new do |s|
@@ -27,7 +27,12 @@ This podspec tells Xcode to compile the Pikafish C++ source code directly direct
     # Tắt bitcode nếu cần thiết (các bản Xcode mới mặc định tắt)
     'ENABLE_BITCODE' => 'NO',
     # Các cờ tối ưu hóa để Engine chạy nhanh
-    'OTHER_CPLUSPLUSFLAGS' => '-O3 -DNDEBUG -std=c++17'
+    'OTHER_CPLUSPLUSFLAGS' => '-O3 -DNDEBUG -std=c++17',
+    
+    # --- QUAN TRỌNG: KHẮC PHỤC LỖI CRASH TRÊN IPHONE (RELEASE MODE) ---
+    # Ép buộc Xcode giữ lại 3 hàm quan trọng và không được xóa chúng khi tối ưu
+    # Lưu ý: Phải có dấu gạch dưới _ trước tên hàm (Quy tắc của iOS)
+    'OTHER_LDFLAGS' => '-Wl,-exported_symbol,_init_pikafish_ios -Wl,-exported_symbol,_send_command_ios -Wl,-exported_symbol,_read_stdout_ios'
   }
   
   # Yêu cầu phiên bản iOS tối thiểu
