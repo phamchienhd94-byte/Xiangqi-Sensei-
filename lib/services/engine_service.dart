@@ -22,6 +22,10 @@ class EngineService {
   factory EngineService() => _instance;
   EngineService._internal();
 
+  // --- BIẾN QUẢN LÝ TRẠNG THÁI (Sửa lỗi isRunning) ---
+  bool _isRunning = false;
+  bool get isRunning => _isRunning; // Getter cho bên ngoài gọi
+
   // --- BIẾN CHO ANDROID/WINDOWS ---
   Process? _process;
   StreamSubscription? _stdoutSubscription;
@@ -47,6 +51,9 @@ class EngineService {
     debugPrint("🚀 STARTUP ENGINE...");
 
     try {
+      // Đánh dấu là đang chạy
+      _isRunning = true;
+
       // 1. Chuẩn bị file NNUE (Bắt buộc cho mọi nền tảng)
       final appSupportDir = await getApplicationSupportDirectory();
       _absoluteNnuePath = "${appSupportDir.path}/pikafish.nnue";
@@ -61,6 +68,7 @@ class EngineService {
 
     } catch (e) {
       debugPrint("❌❌❌ LỖI FATAL: $e");
+      _isRunning = false;
     }
   }
 
@@ -91,21 +99,26 @@ class EngineService {
 
     } catch (e) {
       debugPrint("❌ Không tìm thấy hàm FFI: $e");
+      _isRunning = false;
     }
   }
 
   void _readIOSOutput() {
     if (_iosRead == null) return;
 
-    // Cấp phát bộ nhớ đệm để đọc
-    final buffer = calloc<Utf8>(4096); 
+    // --- SỬA LỖI FFI (Alloc Uint8 thay vì Utf8) ---
+    // Cấp phát 4096 byte bộ nhớ
+    final ffi.Pointer<ffi.Uint8> buffer = calloc<ffi.Uint8>(4096); 
+    
     try {
-      // Gọi hàm C++ để đọc
-      int bytesRead = _iosRead!(buffer, 4096);
+      // Ép kiểu sang Utf8 để truyền vào hàm C++
+      int bytesRead = _iosRead!(buffer.cast<Utf8>(), 4096);
       
       if (bytesRead > 0) {
         // Chuyển từ C String sang Dart String
-        String chunk = buffer.toDartString(length: bytesRead);
+        // cast<Utf8>() là bắt buộc trước khi toDartString
+        String chunk = buffer.cast<Utf8>().toDartString(length: bytesRead);
+        
         // Tách dòng vì có thể nhận nhiều dòng 1 lúc
         LineSplitter ls = const LineSplitter();
         List<String> lines = ls.convert(chunk);
@@ -161,12 +174,11 @@ class EngineService {
 
   // ================= CHUNG =================
   void _handleEngineResponse(String line) {
-    // debugPrint("Engine: $line"); // Uncomment nếu muốn debug kỹ
     if (line == "uciok") {
       debugPrint("✓ uciok -> Config...");
       sendCommand("setoption name EvalFile value $_absoluteNnuePath");
       sendCommand("setoption name Threads value 4"); 
-      sendCommand("setoption name Hash value ${Platform.isIOS ? 64 : 128}"); // iOS giảm RAM chút cho an toàn
+      sendCommand("setoption name Hash value ${Platform.isIOS ? 64 : 128}"); 
       sendCommand("isready");
     }
 
@@ -191,6 +203,7 @@ class EngineService {
   }
 
   Future<void> shutdown() async {
+    _isRunning = false; // Đánh dấu đã tắt
     if (Platform.isIOS) {
       sendCommand("quit");
       _iosOutputTimer?.cancel();
@@ -205,7 +218,6 @@ class EngineService {
 
   Future<void> _copyAssetToFile(String assetKey, String filePath) async {
     try {
-      // Chỉ copy nếu file chưa tồn tại hoặc file rỗng
       if (!File(filePath).existsSync() || File(filePath).lengthSync() == 0) {
         final data = await rootBundle.load(assetKey);
         final bytes = data.buffer.asUint8List();
