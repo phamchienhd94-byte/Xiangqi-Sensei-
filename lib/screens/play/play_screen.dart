@@ -1,13 +1,37 @@
 import 'package:flutter/material.dart';
 import '../../widgets/board/board_widget.dart'; 
-import '../../services/engine_service.dart'; // <-- Import Service để lấy log
+import '../../services/engine_service.dart'; // Import Service
 
-class PlayScreen extends StatelessWidget {
+// --- CHUYỂN THÀNH STATEFUL WIDGET ĐỂ CÓ INITSTATE ---
+class PlayScreen extends StatefulWidget {
   const PlayScreen({super.key});
 
   @override
+  State<PlayScreen> createState() => _PlayScreenState();
+}
+
+class _PlayScreenState extends State<PlayScreen> {
+  
+  // --- HÀM KHỞI TẠO: CHẠY NGAY KHI MÀN HÌNH HIỆN RA ---
+  @override
+  void initState() {
+    super.initState();
+    // Gọi lệnh khởi động Engine sau 1 giây (để giao diện kịp load)
+    Future.delayed(const Duration(milliseconds: 500), () {
+      debugPrint("⚡ PlayScreen: Đang gọi startup()...");
+      EngineService().startup();
+    });
+  }
+
+  // --- HÀM HỦY: TẮT ENGINE KHI THOÁT ---
+  @override
+  void dispose() {
+    EngineService().shutdown();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    // Tính toán chiều rộng bàn cờ
     const horizontalPadding = 20.0;
     final boardWidth = MediaQuery.of(context).size.width - horizontalPadding;
     final safePadding = MediaQuery.of(context).padding;
@@ -26,10 +50,9 @@ class PlayScreen extends StatelessWidget {
         ),
       ),
 
-      // --- SỬ DỤNG STACK ĐỂ VẼ LOG ĐÈ LÊN TRÊN ---
       body: Stack(
         children: [
-          // LỚP 1: GIAO DIỆN GAME CHÍNH (Như cũ)
+          // LỚP 1: GIAO DIỆN GAME CHÍNH
           SafeArea(
             bottom: false,
             child: Column(
@@ -46,6 +69,8 @@ class PlayScreen extends StatelessWidget {
                       size: boardWidth,
                       onSquareTap: (col, row) {
                         debugPrint("[Play] Tapped on: $col, $row");
+                        // Thử gửi lệnh khi bấm bàn cờ để test
+                        EngineService().sendCommand("isready");
                       },
                     ),
                   ),
@@ -62,45 +87,49 @@ class PlayScreen extends StatelessWidget {
             ),
           ),
 
-          // LỚP 2: BẢNG LOG DEBUG (Chỉ hiện để soi lỗi)
+          // LỚP 2: BẢNG DEBUG LOG (NÂNG CẤP)
           Positioned(
-            top: 50, // Cách mép trên 50px
+            top: 40, 
             left: 10,
             right: 10,
-            height: 250, // Chiều cao khung log
+            height: 280, // Cao hơn chút để chứa nút
             child: Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.85), // Nền đen đậm xuyên thấu
-                border: Border.all(color: Colors.greenAccent, width: 2), // Viền xanh
+                color: Colors.black.withOpacity(0.9), 
+                border: Border.all(color: Colors.greenAccent, width: 2),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    "🛠 DEBUG ENGINE (Chụp ảnh gửi mình):", 
-                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text("🛠 DEBUG ENGINE", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                      // Nút Reset thủ công
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.red, padding: EdgeInsets.zero, minimumSize: Size(60, 30)),
+                        onPressed: () {
+                          EngineService().startup();
+                        },
+                        child: const Text("RE-START", style: TextStyle(fontSize: 10, color: Colors.white)),
+                      )
+                    ],
                   ),
                   const Divider(color: Colors.white54),
                   
                   // Khu vực hiển thị chữ chạy
                   Expanded(
                     child: StreamBuilder<String>(
-                      stream: EngineService().systemLogs, // Lắng nghe log
+                      stream: EngineService().systemLogs, 
                       builder: (context, snapshot) {
-                        // Hiển thị nội dung log
                         final logText = snapshot.hasData ? "${snapshot.data}" : "Đang chờ khởi động...";
-                        
                         return SingleChildScrollView(
-                          reverse: true, // Luôn cuộn xuống dòng cuối
+                          reverse: true, 
                           child: Text(
                             logText,
-                            style: const TextStyle(
-                              color: Colors.greenAccent, 
-                              fontFamily: 'Courier', 
-                              fontSize: 12
-                            ),
+                            style: const TextStyle(color: Colors.greenAccent, fontFamily: 'Courier', fontSize: 11),
                           ),
                         );
                       },
@@ -115,36 +144,19 @@ class PlayScreen extends StatelessWidget {
     );
   }
 
-  // --- CÁC WIDGET CON (GIỮ NGUYÊN) ---
-
-  Widget _buildPlayerInfoBar(
-      {required String name,
-      required IconData icon,
-      required String time}) {
+  // --- CÁC WIDGET CON ---
+  Widget _buildPlayerInfoBar({required String name, required IconData icon, required String time}) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
       child: Row(
         children: [
           Icon(icon, color: Colors.white70, size: 24),
           const SizedBox(width: 12),
-          Text(
-            name,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
+          Text(name, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
           const Spacer(),
           Icon(Icons.timer_outlined, color: Colors.white70, size: 20),
           const SizedBox(width: 6),
-          Text(
-            time,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 16,
-            ),
-          ),
+          Text(time, style: const TextStyle(color: Colors.white, fontSize: 16)),
         ],
       ),
     );
@@ -157,21 +169,11 @@ class PlayScreen extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _actionButton(Icons.undo, "Đi lại", () {
-            debugPrint("Nút Đi lại được nhấn");
-          }),
-          _actionButton(Icons.lightbulb_outline, "Gợi ý", () {
-            debugPrint("Nút Gợi ý được nhấn");
-          }),
-          _actionButton(Icons.flag_outlined, "Xin thua", () {
-            debugPrint("Nút Xin thua được nhấn");
-          }),
-          _actionButton(Icons.swap_horiz, "Đổi bên", () {
-            debugPrint("Nút Đổi bên được nhấn");
-          }),
-          _actionButton(Icons.settings, "Cài đặt", () {
-            debugPrint("Nút Cài đặt được nhấn");
-          }),
+          _actionButton(Icons.undo, "Đi lại", () {}),
+          _actionButton(Icons.lightbulb_outline, "Gợi ý", () {}),
+          _actionButton(Icons.flag_outlined, "Xin thua", () {}),
+          _actionButton(Icons.swap_horiz, "Đổi bên", () {}),
+          _actionButton(Icons.settings, "Cài đặt", () {}),
         ],
       ),
     );
@@ -188,10 +190,7 @@ class PlayScreen extends StatelessWidget {
           children: [
             Icon(icon, color: Colors.white, size: 26),
             const SizedBox(height: 4),
-            Text(
-              label,
-              style: const TextStyle(color: Colors.white70, fontSize: 12),
-            ),
+            Text(label, style: const TextStyle(color: Colors.white70, fontSize: 12)),
           ],
         ),
       ),
