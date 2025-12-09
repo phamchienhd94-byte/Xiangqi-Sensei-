@@ -1,80 +1,122 @@
 import 'package:flutter/material.dart';
-import '../../widgets/board/board_widget.dart'; // <-- 1. SỬA LẠI ĐƯỜNG DẪN
+import '../../widgets/board/board_widget.dart'; 
+import '../../services/engine_service.dart'; // <-- Import Service để lấy log
 
 class PlayScreen extends StatelessWidget {
   const PlayScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    // === THAY ĐỔI ===
-    // Tính toán chiều rộng bàn cờ để sát lề hơn
-    // Thay vì nhân 85%, chúng ta trừ đi 1 padding ngang cố định
-    const horizontalPadding = 20.0; // Tổng padding (10px mỗi bên)
+    // Tính toán chiều rộng bàn cờ
+    const horizontalPadding = 20.0;
     final boardWidth = MediaQuery.of(context).size.width - horizontalPadding;
-    // === KẾT THÚC THAY ĐỔI ===
-
     final safePadding = MediaQuery.of(context).padding;
 
-    // Nền tối - Đồng bộ 100% với AnalysisScreen
     return Scaffold(
       backgroundColor: const Color(0xFF2C2A28),
 
-      // 1. BANNER QUẢNG CÁO (Ghim cứng ở đáy)
       bottomNavigationBar: Container(
-        height: 50 + safePadding.bottom, // 50px cho banner + padding an toàn
+        height: 50 + safePadding.bottom,
         color: Colors.black,
         padding: EdgeInsets.only(bottom: safePadding.bottom),
         alignment: Alignment.center,
         child: const Text(
           "Banner Quảng cáo (50px)",
-          // === THAY ĐỔI: Sửa white7G0 thành white70 ===
           style: TextStyle(color: Colors.white70),
-          // === KẾT THÚC THAY ĐỔI ===
         ),
       ),
 
-      // 2. NỘI DUNG CHÍNH (Bảo vệ bởi SafeArea)
-      body: SafeArea(
-        bottom: false,
-        child: Column(
-          children: [
-            // ---------------- THANH INFO NGƯỜI CHƠI (AI) ----------------
-            _buildPlayerInfoBar(
-              name: "AI (Cấp 10)",
-              icon: Icons.computer,
-              time: "05:00",
-            ),
-
-            // ---------------- BÀN CỜ (Chiếm phần lớn) ----------------
-            Expanded(
-              child: Center(
-                // 2. THAY THẾ CONTAINER BẰNG BOARDWIDGET
-                child: BoardWidget(
-                  size: boardWidth,
-                  onSquareTap: (col, row) {
-                    // Xử lý khi người dùng tap vào ô (col, row)
-                    debugPrint("[Play] Tapped on: $col, $row");
-                  },
+      // --- SỬ DỤNG STACK ĐỂ VẼ LOG ĐÈ LÊN TRÊN ---
+      body: Stack(
+        children: [
+          // LỚP 1: GIAO DIỆN GAME CHÍNH (Như cũ)
+          SafeArea(
+            bottom: false,
+            child: Column(
+              children: [
+                _buildPlayerInfoBar(
+                  name: "AI (Cấp 10)",
+                  icon: Icons.computer,
+                  time: "05:00",
                 ),
+
+                Expanded(
+                  child: Center(
+                    child: BoardWidget(
+                      size: boardWidth,
+                      onSquareTap: (col, row) {
+                        debugPrint("[Play] Tapped on: $col, $row");
+                      },
+                    ),
+                  ),
+                ),
+
+                _buildPlayerInfoBar(
+                  name: "Bạn",
+                  icon: Icons.person,
+                  time: "05:00",
+                ),
+
+                _buildControlBar(),
+              ],
+            ),
+          ),
+
+          // LỚP 2: BẢNG LOG DEBUG (Chỉ hiện để soi lỗi)
+          Positioned(
+            top: 50, // Cách mép trên 50px
+            left: 10,
+            right: 10,
+            height: 250, // Chiều cao khung log
+            child: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.85), // Nền đen đậm xuyên thấu
+                border: Border.all(color: Colors.greenAccent, width: 2), // Viền xanh
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    "🛠 DEBUG ENGINE (Chụp ảnh gửi mình):", 
+                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)
+                  ),
+                  const Divider(color: Colors.white54),
+                  
+                  // Khu vực hiển thị chữ chạy
+                  Expanded(
+                    child: StreamBuilder<String>(
+                      stream: EngineService().systemLogs, // Lắng nghe log
+                      builder: (context, snapshot) {
+                        // Hiển thị nội dung log
+                        final logText = snapshot.hasData ? "${snapshot.data}" : "Đang chờ khởi động...";
+                        
+                        return SingleChildScrollView(
+                          reverse: true, // Luôn cuộn xuống dòng cuối
+                          child: Text(
+                            logText,
+                            style: const TextStyle(
+                              color: Colors.greenAccent, 
+                              fontFamily: 'Courier', 
+                              fontSize: 12
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
               ),
             ),
-
-            // ---------------- THANH INFO NGƯỜI CHƠI (BẠN) ----------------
-            _buildPlayerInfoBar(
-              name: "Bạn",
-              icon: Icons.person,
-              time: "05:00",
-            ),
-
-            // ---------------- THANH ĐIỀU KHIỂN (Play Mode) ----------------
-            _buildControlBar(),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
-  // HÀM TẠO THANH INFO NGƯỜI CHƠI
+  // --- CÁC WIDGET CON (GIỮ NGUYÊN) ---
+
   Widget _buildPlayerInfoBar(
       {required String name,
       required IconData icon,
@@ -93,7 +135,7 @@ class PlayScreen extends StatelessWidget {
               fontWeight: FontWeight.bold,
             ),
           ),
-          const Spacer(), // Đẩy thời gian về cuối
+          const Spacer(),
           Icon(Icons.timer_outlined, color: Colors.white70, size: 20),
           const SizedBox(width: 6),
           Text(
@@ -108,45 +150,38 @@ class PlayScreen extends StatelessWidget {
     );
   }
 
-  // HÀM TẠO THANH ĐIỀU KHIỂN DƯỚI
   Widget _buildControlBar() {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 10),
-      color: const Color(0xFF1F1E1C), // Nền thanh điều khiển
+      color: const Color(0xFF1F1E1C),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          // === THAY ĐỔI: Thêm hàm onTap ===
           _actionButton(Icons.undo, "Đi lại", () {
             debugPrint("Nút Đi lại được nhấn");
-          }), // Undo
+          }),
           _actionButton(Icons.lightbulb_outline, "Gợi ý", () {
             debugPrint("Nút Gợi ý được nhấn");
-          }), // Hint
+          }),
           _actionButton(Icons.flag_outlined, "Xin thua", () {
             debugPrint("Nút Xin thua được nhấn");
-          }), // Resign
+          }),
           _actionButton(Icons.swap_horiz, "Đổi bên", () {
             debugPrint("Nút Đổi bên được nhấn");
-          }), // <-- CẬP NHẬT ICON
+          }),
           _actionButton(Icons.settings, "Cài đặt", () {
             debugPrint("Nút Cài đặt được nhấn");
-          }), // Settings
-          // === KẾT THÚC THAY ĐỔI ===
+          }),
         ],
       ),
     );
   }
 
-  // HÀM TẠO NÚT (Tái sử dụng style từ AnalysisScreen)
-  // === THAY ĐỔI: Bọc bằng InkWell để có hiệu ứng nhấn ===
   Widget _actionButton(IconData icon, String label, VoidCallback onTap) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(8.0), // Bo tròn hiệu ứng nhấn
+      borderRadius: BorderRadius.circular(8.0),
       child: Padding(
-        // Thêm padding để vùng nhấn lớn hơn và đẹp hơn
-        // Dùng horizontal: 12 vì có 5 nút, cần tiết kiệm không gian hơn
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -162,5 +197,4 @@ class PlayScreen extends StatelessWidget {
       ),
     );
   }
-  // === KẾT THÚC THAY ĐỔI ===
 }
