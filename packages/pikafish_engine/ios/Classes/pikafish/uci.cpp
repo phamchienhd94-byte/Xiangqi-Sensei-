@@ -1,6 +1,8 @@
 /*
-  Stockfish / Pikafish - modified UCI loop for iOS bridge
-  (License header kept from original project)
+  Stockfish, a UCI chess playing engine derived from Glaurung 2.1
+  Copyright (C) 2004-2025 The Stockfish developers (see AUTHORS file)
+
+  (Giữ nguyên License Header của Pikafish/Stockfish)
 */
 
 #include "uci.h"
@@ -14,10 +16,13 @@
 #include <string_view>
 #include <utility>
 #include <vector>
+
+// --- THÊM: THƯ VIỆN CHO IOS BRIDGE ---
 #include <atomic>
 #include <mutex>
 #include <condition_variable>
 #include <deque>
+// -------------------------------------
 
 #include "benchmark.h"
 #include "engine.h"
@@ -29,44 +34,61 @@
 #include "types.h"
 #include "ucioption.h"
 
-// ------------------ iOS Bridge Declarations ------------------
-// Implemented in ios_bridge.mm; used to send text back to Dart.
+// ----------------------------------------------------------------------------
+// PHẦN CẦU NỐI IOS (IOS BRIDGE SECTION)
+// ----------------------------------------------------------------------------
+
+// Hàm gửi dữ liệu về Dart (được cài đặt trong ios_bridge.mm)
 extern "C" void write_to_dart_buffer(const char* cstr);
 
-// Command injector callable from Objective-C++ (ios_bridge.mm)
-extern "C" void uci_inject_command(const char* cmd);
-
-// Internal IPC structures for injected commands (iOS)
+// Cấu trúc hàng đợi lệnh an toàn luồng
 static std::deque<std::string> ios_command_queue;
 static std::mutex ios_command_mutex;
 static std::condition_variable ios_command_cv;
-
-static std::mutex ios_output_mutex;
 static std::atomic<bool> ios_engine_running{false};
 
-// Safe small wrapper to post output (so we can redirect to bridge)
-static void ios_post_output(const std::string& s) {
-    if (s.empty()) return;
-    std::lock_guard<std::mutex> lock(ios_output_mutex);
-    write_to_dart_buffer(s.c_str());
+// Hàm nội bộ: Gửi string về Dart (thay thế cho sync_cout)
+static void ios_post_output(const std::string& msg) {
+    if (msg.empty()) return;
+    // Gọi sang Objective-C++
+    write_to_dart_buffer(msg.c_str());
 }
+
+// Hàm nhận lệnh từ Dart (được gọi từ ios_bridge.mm)
+extern "C" void uci_inject_command(const char* cmd) {
+    if (cmd == nullptr) return;
+    {
+        std::lock_guard<std::mutex> lock(ios_command_mutex);
+        ios_command_queue.emplace_back(std::string(cmd));
+    }
+    ios_command_cv.notify_one();
+}
+// ----------------------------------------------------------------------------
+
 
 namespace Stockfish {
 
 constexpr auto BenchmarkCommand = "speedtest";
+
 constexpr auto StartFEN = "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w";
 
 template<typename... Ts>
-struct overload: Ts... { using Ts::operator()...; };
+struct overload: Ts... {
+    using Ts::operator()...;
+};
 
 template<typename... Ts>
 overload(Ts...) -> overload<Ts...>;
 
-// Helper: print info string (uses bridge)
+// MODIFIED: Chuyển hướng output sang iOS Bridge
 void UCIEngine::print_info_string(std::string_view str) {
-    for (auto& line : split(str, "\n")) {
-        if (!is_whitespace(line)) {
-            std::string out = std::string("info string ") + line;
+    for (auto& line : split(str, "\n"))
+    {
+        if (!is_whitespace(line))
+        {
+            // Fix lỗi Xcode: Ép kiểu string_view sang string tường minh
+            std::string lineStr = std::string(line); 
+            std::string out = "info string " + lineStr;
             ios_post_output(out);
         }
     }
@@ -76,7 +98,6 @@ UCIEngine::UCIEngine(int argc, char** argv) :
     engine(argv[0]),
     cli(argc, argv) {
 
-    // Use a lambda capturing this to call member function safely
     engine.get_options().add_info_listener([this](const std::optional<std::string>& str) {
         if (str.has_value())
             this->print_info_string(*str);
@@ -86,33 +107,34 @@ UCIEngine::UCIEngine(int argc, char** argv) :
 }
 
 void UCIEngine::init_search_update_listeners() {
-    // Capture this to call member functions that use ios_post_output.
     engine.set_on_iter([this](const auto& i) { this->on_iter(i); });
     engine.set_on_update_no_moves([this](const auto& i) { this->on_update_no_moves(i); });
-    engine.set_on_update_full([this](const auto& i) { this->on_update_full(i, engine.get_options()["UCI_ShowWDL"]); });
+    engine.set_on_update_full(
+      [this](const auto& i) { this->on_update_full(i, engine.get_options()["UCI_ShowWDL"]); });
     engine.set_on_bestmove([this](const auto& bm, const auto& p) { this->on_bestmove(bm, p); });
     engine.set_on_verify_networks([this](const auto& s) { this->print_info_string(s); });
 }
 
+// MODIFIED: Vòng lặp chính xử lý lệnh (đã sửa để nhận lệnh từ Queue)
 void UCIEngine::loop() {
     std::string token, cmd;
 
     for (int i = 1; i < cli.argc; ++i)
         cmd += std::string(cli.argv[i]) + " ";
 
-    // If running as injected engine (no argv), mark running.
+    // Đánh dấu engine bắt đầu chạy
     ios_engine_running.store(true);
 
     do
     {
-        // If running with no commandline args, wait for injected commands.
+        // Nếu không có tham số dòng lệnh (chạy mode thư viện), chờ lệnh từ App
         if (cli.argc == 1) {
             std::unique_lock<std::mutex> lock(ios_command_mutex);
             ios_command_cv.wait(lock, [] {
                 return !ios_command_queue.empty() || !ios_engine_running.load();
             });
 
-            if (!ios_engine_running.load()) break; // shutdown requested
+            if (!ios_engine_running.load()) break;
 
             cmd = std::move(ios_command_queue.front());
             ios_command_queue.pop_front();
@@ -135,7 +157,6 @@ void UCIEngine::loop() {
             ss << "id name " << engine_info(true) << "\n"
                << engine.get_options();
             ios_post_output(ss.str());
-
             ios_post_output("uciok");
         }
 
@@ -178,29 +199,30 @@ void UCIEngine::loop() {
             engine.save_network(files);
         }
         else if (token == "--help" || token == "help" || token == "--license" || token == "license") {
-            std::string help;
-            help.reserve(512);
-            help += "\nPikafish is a powerful xiangqi engine for playing and analyzing.";
-            help += "\nIt is released as free software licensed under the GNU GPLv3 License.";
-            help += "\nFor any further information, visit the repository or read README.";
-            ios_post_output(help);
+             // In thông báo help qua bridge
+             std::stringstream ss;
+             ss << "\nStockfish/Pikafish is a powerful chess engine..."
+                << "\nSee https://github.com/official-stockfish/Stockfish";
+             ios_post_output(ss.str());
         }
         else if (!token.empty() && token[0] != '#') {
             std::string err = "Unknown command: '" + cmd + "'. Type help for more information.";
             ios_post_output(err);
         }
-
+        
+        // Xóa cmd để tránh lặp lại vòng lặp
         if (cli.argc == 1) cmd.clear();
 
     } while (token != "quit" && cli.argc == 1);
-
+    
+    // Dọn dẹp khi thoát
     ios_engine_running.store(false);
     ios_command_cv.notify_all();
 }
 
 Search::LimitsType UCIEngine::parse_limits(std::istream& is) {
     Search::LimitsType limits;
-    std::string token;
+    std::string        token;
 
     limits.startTime = now();
 
@@ -247,11 +269,12 @@ void UCIEngine::go(std::istringstream& is) {
         engine.go(limits);
 }
 
+// MODIFIED: Giữ nguyên logic Bench gốc, chỉ thay đổi Output cuối cùng
 void UCIEngine::bench(std::istream& args) {
     std::string token;
-    uint64_t num, nodes = 0, cnt = 1;
-    uint64_t nodesSearched = 0;
-    const auto& options = engine.get_options();
+    uint64_t    num, nodes = 0, cnt = 1;
+    uint64_t    nodesSearched = 0;
+    const auto& options       = engine.get_options();
 
     engine.set_on_update_full([&](const auto& i) {
         nodesSearched = i.nodes;
@@ -265,38 +288,42 @@ void UCIEngine::bench(std::istream& args) {
 
     TimePoint elapsed = now();
 
-    for (const auto& cmd : list) {
+    for (const auto& cmd : list)
+    {
         std::istringstream is(cmd);
         is >> std::skipws >> token;
 
-        if (token == "go" || token == "eval") {
-            // Keep original debug printing behavior via bridge
+        if (token == "go" || token == "eval")
+        {
+            // Thay thế std::cerr bằng ios_post_output để báo tiến độ
             {
-                std::stringstream posinfo;
-                posinfo << "\nPosition: " << cnt++ << '/' << num << " (" << engine.fen() << ")";
-                ios_post_output(posinfo.str());
+                std::stringstream ss;
+                ss << "\nPosition: " << cnt++ << '/' << num << " (" << engine.fen() << ")";
+                ios_post_output(ss.str());
             }
 
-            if (token == "go") {
+            if (token == "go")
+            {
                 Search::LimitsType limits = parse_limits(is);
-
                 if (limits.perft)
                     nodesSearched = perft(limits);
-                else {
+                else
+                {
                     engine.go(limits);
                     engine.wait_for_search_finished();
                 }
-
                 nodes += nodesSearched;
                 nodesSearched = 0;
-            } else
+            }
+            else
                 engine.trace_eval();
         }
         else if (token == "setoption")
             setoption(is);
         else if (token == "position")
             position(is);
-        else if (token == "ucinewgame") {
+        else if (token == "ucinewgame")
+        {
             engine.search_clear();
             elapsed = now();
         }
@@ -304,11 +331,12 @@ void UCIEngine::bench(std::istream& args) {
 
     elapsed = now() - elapsed + 1;
 
-    dbg_print();
+    // dbg_print(); 
 
+    // MODIFIED: Gửi kết quả tổng hợp về App
     {
         std::stringstream ss;
-        ss << "\n===========================" 
+        ss << "\n==========================="
            << "\nTotal time (ms) : " << elapsed
            << "\nNodes searched  : " << nodes
            << "\nNodes/second    : " << 1000 * nodes / elapsed;
@@ -318,17 +346,17 @@ void UCIEngine::bench(std::istream& args) {
     engine.set_on_update_full([&](const auto& i) { on_update_full(i, options["UCI_ShowWDL"]); });
 }
 
+// MODIFIED: Giữ nguyên logic Benchmark gốc
 void UCIEngine::benchmark(std::istream& args) {
-    // Keep original benchmark logic from upstream (condensed to avoid duplication)
-    // We delegate to a more complete benchmark implementation if available.
     static constexpr int NUM_WARMUP_POSITIONS = 3;
 
     std::string token;
-    uint64_t nodes = 0, cnt = 1;
-    uint64_t nodesSearched = 0;
+    uint64_t    nodes = 0, cnt = 1;
+    uint64_t    nodesSearched = 0;
 
     engine.set_on_update_full([&](const Engine::InfoFull& i) { nodesSearched = i.nodes; });
 
+    // Tắt các callback output khác để đỡ ồn khi benchmark
     engine.set_on_iter([](const auto&) {});
     engine.set_on_update_no_moves([](const auto&) {});
     engine.set_on_bestmove([](const auto&, const auto&) {});
@@ -352,14 +380,19 @@ void UCIEngine::benchmark(std::istream& args) {
     }
 
     // Warmup
-    for (const auto& cmd : setup.commands) {
+    for (const auto& cmd : setup.commands)
+    {
         std::istringstream is(cmd);
         is >> std::skipws >> token;
 
-        if (token == "go") {
-            std::stringstream warminfo;
-            warminfo << "\rWarmup position " << cnt++ << '/' << NUM_WARMUP_POSITIONS;
-            ios_post_output(warminfo.str());
+        if (token == "go")
+        {
+            // Report Warmup progress
+            {
+                std::stringstream ss;
+                ss << "\rWarmup position " << cnt++ << '/' << NUM_WARMUP_POSITIONS;
+                ios_post_output(ss.str());
+            }
 
             Search::LimitsType limits = parse_limits(is);
 
@@ -372,9 +405,11 @@ void UCIEngine::benchmark(std::istream& args) {
 
             nodes += nodesSearched;
             nodesSearched = 0;
-        } else if (token == "position")
+        }
+        else if (token == "position")
             position(is);
-        else if (token == "ucinewgame") {
+        else if (token == "ucinewgame")
+        {
             engine.search_clear();
         }
 
@@ -382,35 +417,41 @@ void UCIEngine::benchmark(std::istream& args) {
             break;
     }
 
-    ios_post_output(std::string("\n"));
+    ios_post_output("\n"); // Newline
 
-    cnt = 1;
+    cnt   = 1;
     nodes = 0;
 
-    int numHashfullReadings = 0;
-    constexpr int hashfullAges[] = {0, 999};
-    int totalHashfull[std::size(hashfullAges)] = {0};
-    int maxHashfull[std::size(hashfullAges)] = {0};
+    int numHashfullReadings                    = 0;
+    constexpr int hashfullAges[]               = {0, 999};
+    int           totalHashfull[std::size(hashfullAges)] = {0};
+    int           maxHashfull[std::size(hashfullAges)]   = {0};
 
     auto updateHashfullReadings = [&]() {
         numHashfullReadings += 1;
-        for (int i = 0; i < static_cast<int>(std::size(hashfullAges)); ++i) {
+        for (int i = 0; i < static_cast<int>(std::size(hashfullAges)); ++i)
+        {
             const int hashfull = engine.get_hashfull(hashfullAges[i]);
-            maxHashfull[i] = std::max(maxHashfull[i], hashfull);
+            maxHashfull[i]     = std::max(maxHashfull[i], hashfull);
             totalHashfull[i] += hashfull;
         }
     };
 
     engine.search_clear();
 
-    for (const auto& cmd : setup.commands) {
+    for (const auto& cmd : setup.commands)
+    {
         std::istringstream is(cmd);
         is >> std::skipws >> token;
 
-        if (token == "go") {
-            std::stringstream posinfo;
-            posinfo << "\rPosition " << cnt++ << '/' << numGoCommands;
-            ios_post_output(posinfo.str());
+        if (token == "go")
+        {
+            // Report Progress
+            {
+                std::stringstream ss;
+                ss << "\rPosition " << cnt++ << '/' << numGoCommands;
+                ios_post_output(ss.str());
+            }
 
             Search::LimitsType limits = parse_limits(is);
 
@@ -425,9 +466,11 @@ void UCIEngine::benchmark(std::istream& args) {
 
             nodes += nodesSearched;
             nodesSearched = 0;
-        } else if (token == "position")
+        }
+        else if (token == "position")
             position(is);
-        else if (token == "ucinewgame") {
+        else if (token == "ucinewgame")
+        {
             engine.search_clear();
         }
     }
@@ -436,17 +479,20 @@ void UCIEngine::benchmark(std::istream& args) {
 
     dbg_print();
 
-    ios_post_output(std::string("\n"));
+    ios_post_output("\n");
 
     static_assert(std::size(hashfullAges) == 2 && hashfullAges[0] == 0 && hashfullAges[1] == 999,
                   "Hardcoded for display.");
 
     std::string threadBinding = engine.thread_binding_information_as_string();
-    if (threadBinding.empty()) threadBinding = "none";
-
+    if (threadBinding.empty())
+        threadBinding = "none";
+    
+    // Final Report
     {
         std::stringstream ss;
-        ss << "===========================" << "\nVersion                    : " << engine_version_info()
+        ss << "==========================="
+           << "\nVersion                    : " << engine_version_info()
            << "\n" << compiler_info()
            << "Large pages                : " << (has_large_pages() ? "yes" : "no")
            << "\nUser invocation            : " << BenchmarkCommand << " " << setup.originalInvocation
@@ -474,6 +520,7 @@ void UCIEngine::setoption(std::istringstream& is) {
 
 std::uint64_t UCIEngine::perft(const Search::LimitsType& limits) {
     auto nodes = engine.perft(engine.fen(), limits.perft);
+    // Report perft result
     {
         std::stringstream ss;
         ss << "\nNodes searched: " << nodes;
@@ -487,13 +534,15 @@ void UCIEngine::position(std::istringstream& is) {
 
     is >> token;
 
-    if (token == "startpos") {
+    if (token == "startpos")
+    {
         fen = StartFEN;
         is >> token;
-    } else if (token == "fen") {
+    }
+    else if (token == "fen")
         while (is >> token && token != "moves")
             fen += token + " ";
-    } else
+    else
         return;
 
     std::vector<std::string> moves;
@@ -504,13 +553,15 @@ void UCIEngine::position(std::istringstream& is) {
 }
 
 namespace {
-
-struct WinRateParams { double a; double b; };
+// ... (WinRateParams giữ nguyên) ...
+struct WinRateParams {
+    double a;
+    double b;
+};
 
 WinRateParams win_rate_params(const Position& pos) {
     int material = 10 * pos.count<ROOK>() + 5 * pos.count<KNIGHT>() + 5 * pos.count<CANNON>()
                  + 3 * pos.count<BISHOP>() + 2 * pos.count<ADVISOR>() + pos.count<PAWN>();
-
     double m = std::clamp(material, 17, 110) / 65.0;
     constexpr double as[] = {220.59891365, -810.35730430, 928.68185198, 79.83955423};
     constexpr double bs[] = {61.99287416, -233.72674182, 325.85508322, -68.72720854};
@@ -523,18 +574,17 @@ int win_rate_model(Value v, const Position& pos) {
     auto [a, b] = win_rate_params(pos);
     return int(0.5 + 1000 / (1 + std::exp((a - double(v)) / b)));
 }
-} // namespace
+}
 
 std::string UCIEngine::format_score(const Score& s) {
-    const auto format = overload{
-        [](Score::Mate mate) -> std::string {
-            auto m = (mate.plies > 0 ? (mate.plies + 1) : mate.plies) / 2;
-            return std::string("mate ") + std::to_string(m);
-        },
-        [](Score::InternalUnits units) -> std::string {
-            return std::string("cp ") + std::to_string(units.value);
-        }
-    };
+    const auto format = overload{[](Score::Mate mate) -> std::string {
+                                     auto m = (mate.plies > 0 ? (mate.plies + 1) : mate.plies) / 2;
+                                     return std::string("mate ") + std::to_string(m);
+                                 },
+                                 [](Score::InternalUnits units) -> std::string {
+                                     return std::string("cp ") + std::to_string(units.value);
+                                 }};
+
     return s.visit(format);
 }
 
@@ -557,12 +607,8 @@ std::string UCIEngine::square(Square s) {
 }
 
 std::string UCIEngine::move(Move m) {
-    if (m == Move::none())
-        return "(none)";
-
-    if (m == Move::null())
-        return "0000";
-
+    if (m == Move::none()) return "(none)";
+    if (m == Move::null()) return "0000";
     Square from = m.from_sq();
     Square to   = m.to_sq();
     return square(from) + square(to);
@@ -575,6 +621,9 @@ Move UCIEngine::to_move(const Position& pos, std::string str) {
     return Move::none();
 }
 
+// MODIFIED: CÁC HÀM CALLBACK UPDATE THÔNG TIN
+// Thay thế sync_cout bằng ios_post_output
+
 void UCIEngine::on_update_no_moves(const Engine::InfoShort& info) {
     std::stringstream ss;
     ss << "info depth " << info.depth << " score " << format_score(info.score);
@@ -583,6 +632,7 @@ void UCIEngine::on_update_no_moves(const Engine::InfoShort& info) {
 
 void UCIEngine::on_update_full(const Engine::InfoFull& info, bool showWDL) {
     std::stringstream ss;
+
     ss << "info";
     ss << " depth " << info.depth
        << " seldepth " << info.selDepth
@@ -615,14 +665,10 @@ void UCIEngine::on_iter(const Engine::InfoIter& info) {
 }
 
 void UCIEngine::on_bestmove(std::string_view bestmove, std::string_view ponder) {
-    std::string out;
-    out.reserve(64);
-    out += "bestmove ";
-    out += std::string(bestmove);
-    if (!ponder.empty()) {
-        out += " ponder ";
-        out += std::string(ponder);
-    }
+    // Fix lỗi string_view cho Xcode
+    std::string out = "bestmove " + std::string(bestmove);
+    if (!ponder.empty())
+        out += " ponder " + std::string(ponder);
     ios_post_output(out);
 }
 
