@@ -1,0 +1,15 @@
+name: pikafish_engine
+description: A local plugin to bundle Pikafish engine source code for iOS.
+version: 0.0.1
+publish_to: 'none' # Quan trọng: Đánh dấu không upload lên kho public
+
+environment:
+  sdk: ">=2.17.0 <4.0.0"
+  flutter: ">=2.5.0"
+
+flutter:
+  plugin:
+    platforms:
+      ios:
+        pluginClass: PikafishEnginePlugin
+      # Nếu sau này bạn muốn hỗ trợ Android qua plugin này cũng được, nhưng hiện tại ta chỉ focus iOS

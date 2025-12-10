@@ -1,10 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'dart:io'; // Cần để check Platform.isIOS
+
+// Import màn hình và service
 import 'screens/analysis/analysis_screen.dart';
 import 'utils/app_localizations.dart';
+import 'services/pikafish_ios_plugin.dart'; // Import Plugin iOS
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // --- KÍCH HOẠT PLUGIN CHO IOS ---
+  if (Platform.isIOS) {
+    // Hàm này sẽ nạp file .mm và khởi động thread engine ngầm
+    PikafishIOSPlugin().initialize();
+  }
+  // --------------------------------
+
   runApp(const MyApp());
 }
 

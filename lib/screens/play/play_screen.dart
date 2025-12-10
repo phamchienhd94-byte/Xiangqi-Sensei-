@@ -14,11 +14,8 @@ class _PlayScreenState extends State<PlayScreen> {
   @override
   void initState() {
     super.initState();
-    // Tự động bật Engine và hiện bảng Log sau 0.5 giây
-    Future.delayed(const Duration(milliseconds: 500), () {
-      EngineService().startup();
-      _showLogDialog(); // <-- BẮT BUỘC HIỆN LOG
-    });
+    // Khởi động Engine ngầm khi vào màn hình chơi (nếu cần)
+    EngineService().startup();
   }
 
   @override
@@ -27,85 +24,74 @@ class _PlayScreenState extends State<PlayScreen> {
     super.dispose();
   }
 
-  // Hàm hiện bảng Log dạng Popup (Không thể không nhìn thấy)
-  void _showLogDialog() {
-    showDialog(
-      context: context,
-      barrierDismissible: false, // Không cho tắt bằng cách bấm ra ngoài
-      builder: (context) => AlertDialog(
-        backgroundColor: Colors.black.withOpacity(0.9),
-        title: const Text("🔍 ENGINE LOG (Build 9)", style: TextStyle(color: Colors.white)),
-        content: SizedBox(
-          width: double.maxFinite,
-          height: 300,
-          child: StreamBuilder<String>(
-            stream: EngineService().systemLogs,
-            builder: (context, snapshot) {
-              return SingleChildScrollView(
-                reverse: true,
-                child: Text(
-                  snapshot.hasData ? "${snapshot.data}" : "Đang chờ khởi động...",
-                  style: const TextStyle(color: Colors.greenAccent, fontSize: 12),
-                ),
-              );
-            },
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => EngineService().startup(),
-            child: const Text("RE-START ENGINE", style: TextStyle(color: Colors.redAccent)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Đóng", style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    const horizontalPadding = 20.0;
-    final boardWidth = MediaQuery.of(context).size.width - horizontalPadding;
+    // Lấy kích thước màn hình
+    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
     
+    // Tính toán kích thước bàn cờ sao cho vừa vặn, trừ đi khoảng đệm 
+    // Logic: Nếu màn dọc thì theo chiều ngang, màn ngang thì theo chiều dọc
+    final isPortrait = screenHeight > screenWidth;
+    final boardSize = isPortrait 
+        ? screenWidth - 20 
+        : screenHeight - 40;
+
     return Scaffold(
-      // === QUAN TRỌNG: ĐỔI MÀU NỀN THÀNH ĐỎ ĐỂ KIỂM TRA UPDATE ===
-      backgroundColor: Colors.red.shade900, 
-      // ==========================================================
+      // Màu nền chuẩn của App (Dark theme)
+      backgroundColor: const Color(0xFF2C2A28), 
 
-      appBar: AppBar(title: const Text("TEST MODE - BUILD 9")),
+      appBar: AppBar(
+        title: const Text("Chơi với máy"),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        centerTitle: true,
+      ),
 
+      // === FIX LỖI KHUYẾT MÀN HÌNH (TAI THỎ) ===
+      // SafeArea đảm bảo nội dung không bị che bởi tai thỏ hoặc góc bo tròn
       body: SafeArea(
-        child: Column(
-          children: [
-            const Padding(
-              padding: EdgeInsets.all(8.0),
-              child: Text("Nếu màn hình này MÀU ĐỎ -> Đã update code thành công!", 
-                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-            ),
-            
-            Expanded(
-              child: Center(
-                child: BoardWidget(
-                  size: boardWidth,
-                  onSquareTap: (col, row) {
-                    // Bấm vào bàn cờ cũng hiện lại log
-                    _showLogDialog();
-                  },
-                ),
+        left: true,  // Tránh tai thỏ bên trái (khi xoay ngang)
+        right: true, // Tránh tai thỏ bên phải
+        bottom: true, // Tránh thanh vuốt home ảo
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // Khu vực hiển thị bàn cờ
+              BoardWidget(
+                size: boardSize,
+                onSquareTap: (col, row) {
+                  // Logic xử lý nước đi sẽ nằm ở đây
+                  print("Tap at: $col, $row");
+                },
               ),
-            ),
-            
-            ElevatedButton.icon(
-              icon: const Icon(Icons.bug_report),
-              label: const Text("XEM LOG ENGINE"),
-              onPressed: _showLogDialog,
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-            ),
-            const SizedBox(height: 20),
-          ],
+              
+              const SizedBox(height: 20),
+              
+              // Các nút chức năng (Ví dụ: Ván mới, Hoàn tác)
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  ElevatedButton.icon(
+                    icon: const Icon(Icons.refresh),
+                    label: const Text("Ván mới"),
+                    onPressed: () {
+                      // Logic ván mới
+                    },
+                  ),
+                  const SizedBox(width: 10),
+                  ElevatedButton.icon(
+                    icon: const Icon(Icons.undo),
+                    label: const Text("Đi lại"),
+                    onPressed: () {
+                      // Logic hoàn tác
+                    },
+                  ),
+                ],
+              )
+            ],
+          ),
         ),
       ),
     );

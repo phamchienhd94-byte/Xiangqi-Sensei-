@@ -14,9 +14,14 @@ dependencies:
   flutter_localizations:
     sdk: flutter
 
-  # --- THÊM DÒNG NÀY (Hỗ trợ gọi Engine C++) ---
+  # Thư viện FFI để gọi hàm C++
   ffi: ^2.1.0 
-  # ---------------------------------------------
+
+  # --- QUAN TRỌNG: LIÊN KẾT PLUGIN ENGINE LOCAL ---
+  # Dòng này bắt buộc phải có để nạp code C++ từ thư mục packages
+  pikafish_engine:
+    path: ./packages/pikafish_engine
+  # ------------------------------------------------
 
   cupertino_icons: ^1.0.8
   flutter_svg: ^2.0.9
@@ -36,13 +41,14 @@ flutter:
 
   assets:
     - assets/pieces/
-    - assets/engine/pikafish.exe
+    # Lưu ý: pikafish.exe chỉ dùng cho Android/Windows. 
+    # iOS sẽ dùng code C++ qua plugin pikafish_engine ở trên.
+    - assets/engine/pikafish.exe 
     - assets/engine/pikafish.nnue
     - assets/sounds/
-    # Khai báo file icon để Flutter nhận diện (tùy chọn, nhưng nên có)
     - assets/icon.png
 
-# Cấu hình tạo icon (nằm ngoài cùng, không thụt lề)
+# Cấu hình tạo icon
 flutter_launcher_icons:
   android: "launcher_icon"
   ios: true
