@@ -31,7 +31,22 @@ class PikafishIOSPlugin {
     if (!Platform.isIOS || _isLoaded) return;
 
     try {
+      print("🚀 PikafishIOS: Bắt đầu nạp Engine từ Main Binary...");
+      
+      // Trên iOS, plugin được biên dịch tĩnh vào App, nên dùng process()
       _dylib = DynamicLibrary.process();
+
+      // --- BƯỚC KIỂM TRA SỰ SỐNG (RẤT QUAN TRỌNG) ---
+      // Kiểm tra xem Linker có xóa nhầm hàm init_pikafish_ios không
+      final hasSymbol = _dylib.providesSymbol('init_pikafish_ios');
+      print("🔍 PikafishIOS: Kiểm tra symbol 'init_pikafish_ios'... Kết quả: $hasSymbol");
+
+      if (!hasSymbol) {
+         print("❌ LỖI NGHIÊM TRỌNG: Engine code đã bị Xcode xóa mất (Dead Code Stripping)!");
+         print("👉 Giải pháp: Kiểm tra lại cờ -exported_symbol trong podspec.");
+         return;
+      }
+      // ----------------------------------------------
 
       _initFn = _dylib
           .lookup<NativeFunction<InitFunc>>('init_pikafish_ios')
@@ -45,10 +60,11 @@ class PikafishIOSPlugin {
           .lookup<NativeFunction<ReadStdoutFunc>>('read_stdout_ios')
           .asFunction();
 
+      // Gọi hàm khởi tạo C++
       _initFn();
       _isLoaded = true;
 
-      print('✅ Pikafish iOS Engine initialized');
+      print('✅ Pikafish iOS Engine initialized SUCCESS!');
       _startReadingLoop();
     } catch (e, s) {
       print('❌ Pikafish iOS FFI load error: $e');
@@ -57,10 +73,13 @@ class PikafishIOSPlugin {
   }
 
   void sendCommand(String command) {
-    if (!_isLoaded) return;
+    if (!_isLoaded) {
+      print("⚠️ Cảnh báo: Gửi lệnh '$command' khi Engine chưa load xong.");
+      return;
+    }
     final ptr = command.toNativeUtf8();
     _sendCommandFn(ptr);
-    calloc.free(ptr); // ✅ FIX
+    calloc.free(ptr);
   }
 
   void _startReadingLoop() {
@@ -77,6 +96,8 @@ class PikafishIOSPlugin {
           if (len > 0) {
             final text = buffer.cast<Utf8>().toDartString();
             if (text.trim().isNotEmpty) {
+              // Log ra để debug
+              print("ENGINE -> APP: $text");
               onEngineOutput?.call(text);
             }
           }
